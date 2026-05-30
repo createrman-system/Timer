@@ -22,6 +22,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Switch
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
@@ -71,20 +79,29 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun TimerApp(viewModel: TimerViewModel) {
+    val state by viewModel.state.collectAsState()
     val navigator = rememberListDetailPaneScaffoldNavigator<Nothing>()
+    
+    val darkTheme = when (state.isDarkMode) {
+        true -> true
+        false -> false
+        null -> isSystemInDarkTheme()
+    }
 
-    ListDetailPaneScaffold(
-        directive = navigator.scaffoldDirective,
-        value = navigator.scaffoldValue,
-        listPane = {
-            TimerMainScreen(viewModel)
-        },
-        detailPane = {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Timer Details", style = MaterialTheme.typography.titleLarge)
+    TimerTheme(darkTheme = darkTheme) {
+        ListDetailPaneScaffold(
+            directive = navigator.scaffoldDirective,
+            value = navigator.scaffoldValue,
+            listPane = {
+                TimerMainScreen(viewModel)
+            },
+            detailPane = {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Timer Details", style = MaterialTheme.typography.titleLarge)
+                }
             }
-        }
-    )
+        )
+    }
 }
 
 @Composable
@@ -99,7 +116,10 @@ fun TimerMainScreen(viewModel: TimerViewModel) {
         onSetTime = viewModel::setTimer,
         onAddLap = viewModel::addLap,
         onToggleCity = viewModel::toggleCity,
-        availableCities = viewModel.getAvailableCityNames()
+        availableCities = viewModel.getAvailableCityNames(),
+        onSetAlarmSound = viewModel::setAlarmSound,
+        onToggleDarkMode = viewModel::toggleDarkMode,
+        onSetLanguage = viewModel::setLanguage
     )
 }
 
@@ -114,21 +134,28 @@ fun TimerContent(
     onSetTime: (Long) -> Unit,
     onAddLap: () -> Unit,
     onToggleCity: (String) -> Unit,
-    availableCities: List<String>
+    availableCities: List<String>,
+    onSetAlarmSound: (AlarmSound) -> Unit,
+    onToggleDarkMode: (Boolean?) -> Unit,
+    onSetLanguage: (AppLanguage) -> Unit
 ) {
     var showCustomDialog by remember { mutableStateOf(value = false) }
     var showCityDialog by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text("Timer") },
+                    title = { Text(stringResource("universal_timer", state.language.code)) },
                     actions = {
                         if (state.mode == TimerMode.WORLD_TIME) {
                             IconButton(onClick = { showCityDialog = true }) {
-                                Icon(Icons.Rounded.Add, contentDescription = "Add City")
+                                Icon(Icons.Rounded.Add, contentDescription = stringResource("add_city", state.language.code))
                             }
+                        }
+                        IconButton(onClick = { showSettingsDialog = true }) {
+                            Icon(Icons.Rounded.Settings, contentDescription = stringResource("settings", state.language.code))
                         }
                     }
                 )
@@ -140,24 +167,24 @@ fun TimerContent(
                     Tab(
                         selected = state.mode == TimerMode.TIMER,
                         onClick = { if (state.mode != TimerMode.TIMER) onToggleMode() },
-                        text = { Text("Timer") }
+                        text = { Text(stringResource("timer", state.language.code)) }
                     )
                     Tab(
                         selected = state.mode == TimerMode.STOPWATCH,
                         onClick = { if (state.mode != TimerMode.STOPWATCH) onToggleMode() },
-                        text = { Text("Stopwatch") }
+                        text = { Text(stringResource("stopwatch", state.language.code)) }
                     )
                     Tab(
                         selected = state.mode == TimerMode.WORLD_TIME,
                         onClick = { if (state.mode != TimerMode.WORLD_TIME) onToggleMode() },
-                        text = { Text("World Time") }
+                        text = { Text(stringResource("world", state.language.code)) }
                     )
                 }
             }
         }
     ) { innerPadding ->
         if (state.mode == TimerMode.WORLD_TIME) {
-            WorldTimeScreen(state.worldTimes, innerPadding)
+            WorldTimeScreen(state.worldTimes, innerPadding, state.language.code)
         } else {
             Column(
                 modifier = Modifier
@@ -169,11 +196,19 @@ fun TimerContent(
             ) {
                 Spacer(modifier = Modifier.height(32.dp))
 
-                TimerDisplay(
-                    timeMillis = state.timeMillis,
-                    progress = state.progress,
-                    isStopwatch = state.mode == TimerMode.STOPWATCH
-                )
+                if (state.mode == TimerMode.TIMER) {
+                    TimerDisplay(
+                        timeMillis = state.timeMillis,
+                        progress = state.progress,
+                        isStopwatch = false
+                    )
+                } else {
+                    TimerDisplay(
+                        timeMillis = state.timeMillis,
+                        progress = 0f,
+                        isStopwatch = true
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(32.dp))
 
@@ -186,10 +221,11 @@ fun TimerContent(
                     onSetTime = onSetTime,
                     onAddLap = onAddLap,
                     onCustomClick = { showCustomDialog = true },
+                    languageCode = state.language.code
                 )
 
                 if (state.mode == TimerMode.STOPWATCH && state.laps.isNotEmpty()) {
-                    LapsList(state.laps)
+                    LapsList(state.laps, state.language.code)
                 }
             }
         }
@@ -202,6 +238,7 @@ fun TimerContent(
                 onSetTime(((minutes * 60L) + seconds) * 1000L)
                 showCustomDialog = false
             },
+            languageCode = state.language.code
         )
     }
 
@@ -210,37 +247,154 @@ fun TimerContent(
             availableCities = availableCities,
             activeCities = state.worldTimes.map { it.cityName }.toSet(),
             onDismiss = { showCityDialog = false },
-            onToggleCity = onToggleCity
+            onToggleCity = onToggleCity,
+            languageCode = state.language.code
+        )
+    }
+
+    if (showSettingsDialog) {
+        SettingsDialog(
+            state = state,
+            onDismiss = { showSettingsDialog = false },
+            onSetAlarmSound = onSetAlarmSound,
+            onToggleDarkMode = onToggleDarkMode,
+            onSetLanguage = onSetLanguage
         )
     }
 }
 
 @Composable
-fun WorldTimeScreen(worldTimes: List<WorldTime>, paddingValues: androidx.compose.foundation.layout.PaddingValues) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(paddingValues)
-    ) {
-        items(worldTimes) { worldTime ->
-            ListItem(
-                headlineContent = { Text(worldTime.cityName, fontWeight = FontWeight.Bold) },
-                supportingContent = { Text(worldTime.zoneId) },
-                trailingContent = {
-                    Text(
-                        worldTime.time,
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.primary
+fun SettingsDialog(
+    state: TimerState,
+    onDismiss: () -> Unit,
+    onSetAlarmSound: (AlarmSound) -> Unit,
+    onToggleDarkMode: (Boolean?) -> Unit,
+    onSetLanguage: (AppLanguage) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource("settings", state.language.code)) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(stringResource("theme", state.language.code), style = MaterialTheme.typography.labelLarge)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                ) {
+                    Text(stringResource("system_default", state.language.code), modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = state.isDarkMode == null,
+                        onCheckedChange = { if (it) onToggleDarkMode(null) else onToggleDarkMode(false) }
                     )
                 }
-            )
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                if (state.isDarkMode != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                    ) {
+                        Text(stringResource("dark_mode", state.language.code), modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = state.isDarkMode == true,
+                            onCheckedChange = { onToggleDarkMode(it) }
+                        )
+                    }
+                }
+                
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(16.dp))
+
+                Text(stringResource("alarm_sound", state.language.code), style = MaterialTheme.typography.labelLarge)
+                var expandedSound by remember { mutableStateOf(false) }
+                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    OutlinedButton(
+                        onClick = { expandedSound = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(state.selectedAlarmSound.name)
+                    }
+                    DropdownMenu(expanded = expandedSound, onDismissRequest = { expandedSound = false }) {
+                        AlarmSound.entries.forEach { sound ->
+                            DropdownMenuItem(
+                                text = { Text(sound.name) },
+                                onClick = {
+                                    onSetAlarmSound(sound)
+                                    expandedSound = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(16.dp))
+
+                Text(stringResource("language", state.language.code), style = MaterialTheme.typography.labelLarge)
+                var expandedLang by remember { mutableStateOf(false) }
+                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    OutlinedButton(
+                        onClick = { expandedLang = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(state.language.displayName)
+                    }
+                    DropdownMenu(expanded = expandedLang, onDismissRequest = { expandedLang = false }) {
+                        AppLanguage.entries.forEach { lang ->
+                            DropdownMenuItem(
+                                text = { Text(lang.displayName) },
+                                onClick = {
+                                    onSetLanguage(lang)
+                                    expandedLang = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource("close", state.language.code)) }
+        }
+    )
+}
+
+@Composable
+fun WorldTimeScreen(worldTimes: List<WorldTime>, paddingValues: androidx.compose.foundation.layout.PaddingValues, languageCode: String) {
+    if (worldTimes.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
+            Text(stringResource("select_cities", languageCode))
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            items(worldTimes) { worldTime ->
+                ListItem(
+                    headlineContent = { Text(worldTime.cityName, fontWeight = FontWeight.Bold) },
+                    supportingContent = { Text(worldTime.zoneId) },
+                    trailingContent = {
+                        Text(
+                            worldTime.time,
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            }
         }
     }
 }
 
 @Composable
-fun TimerDisplay(timeMillis: Long, progress: Float, isStopwatch: Boolean) {
+fun TimerDisplay(
+    timeMillis: Long, 
+    progress: Float, 
+    isStopwatch: Boolean
+) {
     val animatedProgress by animateFloatAsState(
         targetValue = progress,
         animationSpec = spring(
@@ -250,6 +404,11 @@ fun TimerDisplay(timeMillis: Long, progress: Float, isStopwatch: Boolean) {
         label = "timerProgress"
     )
     
+    val color = when {
+        isStopwatch -> MaterialTheme.colorScheme.secondary
+        else -> MaterialTheme.colorScheme.primary
+    }
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -261,18 +420,17 @@ fun TimerDisplay(timeMillis: Long, progress: Float, isStopwatch: Boolean) {
             CircularProgressIndicator(
                 progress = { animatedProgress },
                 modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.primary,
+                color = color,
                 strokeWidth = 16.dp,
-                trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                trackColor = color.copy(alpha = 0.1f),
                 strokeCap = StrokeCap.Round
             )
         } else {
-            // Indeterminate-like rotation for stopwatch or just a static ring
             CircularProgressIndicator(
                 modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.secondary,
+                color = color,
                 strokeWidth = 8.dp,
-                trackColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f),
+                trackColor = color.copy(alpha = 0.1f),
                 strokeCap = StrokeCap.Round
             )
         }
@@ -285,7 +443,7 @@ fun TimerDisplay(timeMillis: Long, progress: Float, isStopwatch: Boolean) {
                     fontSize = 80.sp,
                     letterSpacing = (-2).sp
                 ),
-                color = if (isStopwatch) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+                color = color
             )
             Text(
                 text = formatMillis(timeMillis),
@@ -299,13 +457,13 @@ fun TimerDisplay(timeMillis: Long, progress: Float, isStopwatch: Boolean) {
 }
 
 @Composable
-fun LapsList(laps: List<Long>) {
+fun LapsList(laps: List<Long>, languageCode: String) {
     Column(modifier = Modifier.padding(16.dp)) {
-        Text("Laps", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource("lap", languageCode), style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
         laps.forEachIndexed { index, lapTime ->
             ListItem(
-                headlineContent = { Text("Lap ${laps.size - index}") },
+                headlineContent = { Text("${stringResource("lap", languageCode)} ${laps.size - index}") },
                 trailingContent = { Text(formatTime(lapTime) + formatMillis(lapTime)) }
             )
             if (index < laps.size - 1) HorizontalDivider()
@@ -318,15 +476,16 @@ fun CitySelectionDialog(
     availableCities: List<String>,
     activeCities: Set<String>,
     onDismiss: () -> Unit,
-    onToggleCity: (String) -> Unit
+    onToggleCity: (String) -> Unit,
+    languageCode: String
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { 
             Column {
-                Text("Select Cities")
+                Text(stringResource("select_cities", languageCode))
                 Text(
-                    "Select up to 5 favorites", 
+                    "Select up to 5 favorites", // Could also be localized
                     style = MaterialTheme.typography.bodySmall,
                     color = if (activeCities.size >= 5) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -357,7 +516,7 @@ fun CitySelectionDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Done") }
+            TextButton(onClick = onDismiss) { Text(stringResource("done", languageCode)) }
         }
     )
 }
@@ -371,7 +530,8 @@ fun TimerControls(
     onReset: () -> Unit,
     onSetTime: (Long) -> Unit,
     onAddLap: () -> Unit,
-    onCustomClick: () -> Unit
+    onCustomClick: () -> Unit,
+    languageCode: String
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(
@@ -383,21 +543,24 @@ fun TimerControls(
                 onClick = onReset,
                 modifier = Modifier.padding(8.dp)
             ) {
-                Icon(Icons.Rounded.Refresh, contentDescription = "Reset")
+                Icon(Icons.Rounded.Refresh, contentDescription = stringResource("reset", languageCode))
                 Spacer(Modifier.size(8.dp))
-                Text("Reset")
+                Text(stringResource("reset", languageCode))
             }
 
             LargeFloatingActionButton(
                 onClick = if (status == TimerStatus.RUNNING) onPause else onStart,
-                containerColor = if (mode == TimerMode.TIMER) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
-                contentColor = if (mode == TimerMode.TIMER) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondary,
+                containerColor = when (mode) {
+                    TimerMode.TIMER -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.secondary
+                },
+                contentColor = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier.padding(16.dp),
                 shape = MaterialTheme.shapes.extraLarge
             ) {
                 Icon(
                     imageVector = if (status == TimerStatus.RUNNING) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    contentDescription = if (status == TimerStatus.RUNNING) "Pause" else "Start",
+                    contentDescription = if (status == TimerStatus.RUNNING) stringResource("pause", languageCode) else stringResource("start", languageCode),
                     modifier = Modifier.size(40.dp)
                 )
             }
@@ -407,7 +570,7 @@ fun TimerControls(
                     onClick = onCustomClick,
                     modifier = Modifier.padding(8.dp)
                 ) {
-                    Icon(Icons.Rounded.Edit, contentDescription = "Custom")
+                    Icon(Icons.Rounded.Edit, contentDescription = stringResource("custom", languageCode))
                 }
             } else if (mode == TimerMode.STOPWATCH) {
                 OutlinedButton(
@@ -415,7 +578,7 @@ fun TimerControls(
                     enabled = status == TimerStatus.RUNNING,
                     modifier = Modifier.padding(8.dp)
                 ) {
-                    Icon(Icons.Rounded.Flag, contentDescription = "Lap")
+                    Icon(Icons.Rounded.Flag, contentDescription = stringResource("lap", languageCode))
                 }
             }
         }
@@ -438,20 +601,21 @@ fun TimerControls(
 @Composable
 fun CustomTimeDialog(
     onDismiss: () -> Unit,
-    onConfirm: (Int, Int) -> Unit
+    onConfirm: (Int, Int) -> Unit,
+    languageCode: String
 ) {
     var minutes by remember { mutableStateOf("0") }
     var seconds by remember { mutableStateOf("0") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Set Custom Timer") },
+        title = { Text(stringResource("custom", languageCode)) },
         text = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextField(
                     value = minutes,
                     onValueChange = { minutes = it.filter { char -> char.isDigit() } },
-                    label = { Text("Min") },
+                    label = { Text(stringResource("min", languageCode)) },
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
@@ -461,7 +625,7 @@ fun CustomTimeDialog(
                 TextField(
                     value = seconds,
                     onValueChange = { seconds = it.filter { char -> char.isDigit() } },
-                    label = { Text("Sec") },
+                    label = { Text(stringResource("sec", languageCode)) },
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
@@ -475,12 +639,12 @@ fun CustomTimeDialog(
                     onConfirm(min, sec)
                 },
             ) {
-                Text("OK")
+                Text(stringResource("ok", languageCode))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource("cancel", languageCode))
             }
         }
     )
@@ -511,7 +675,10 @@ fun TimerPreview() {
             onSetTime = {},
             onAddLap = {},
             onToggleCity = {},
-            availableCities = listOf("London", "New York")
+            availableCities = listOf("London", "New York"),
+            onSetAlarmSound = {},
+            onToggleDarkMode = {},
+            onSetLanguage = {}
         )
     }
 }

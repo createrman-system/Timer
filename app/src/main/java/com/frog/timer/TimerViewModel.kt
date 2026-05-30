@@ -39,6 +39,13 @@ data class WorldTime(
 )
 
 /**
+ * Represents the sound selected for the alarm.
+ */
+enum class AlarmSound {
+    CLASSIC, RADAR, BEEP, GENTLE
+}
+
+/**
  * State object representing the timer's current progress and status.
  */
 data class TimerState(
@@ -47,14 +54,16 @@ data class TimerState(
     val status: TimerStatus = TimerStatus.INITIAL,
     val mode: TimerMode = TimerMode.TIMER,
     val worldTimes: List<WorldTime> = emptyList(),
-    val laps: List<Long> = emptyList()
+    val laps: List<Long> = emptyList(),
+    val selectedAlarmSound: AlarmSound = AlarmSound.CLASSIC,
+    val isDarkMode: Boolean? = null,
+    val language: AppLanguage = AppLanguage.SYSTEM
 ) {
     /**
-     * Progress from 0.0 to 1.0 for TIMER mode. 
-     * For STOPWATCH, it could represent something else or be 0.
+     * Progress from 0.0 to 1.0. 
      */
     val progress: Float
-        get() = if ((mode == TimerMode.TIMER) && (initialTimeMillis > 0)) {
+        get() = if (initialTimeMillis > 0) {
             timeMillis.toFloat() / initialTimeMillis.toFloat()
         } else {
             0f
@@ -164,6 +173,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                         val zonedDateTime = ZonedDateTime.now(ZoneId.of(zone))
                         WorldTime(name, zonedDateTime.format(formatter), zone)
                     }
+                    .sortedBy { it.cityName }
                 _state.update { it.copy(worldTimes = times) }
                 delay(1000)
             }
@@ -186,7 +196,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun getAvailableCityNames() = availableCities.map { it.first }
+    fun getAvailableCityNames() = availableCities.map { it.first }.sorted()
 
     /**
      * Configures the timer with a specific duration.
@@ -214,7 +224,13 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 TimerMode.STOPWATCH -> TimerMode.WORLD_TIME
                 TimerMode.WORLD_TIME -> TimerMode.TIMER
             }
-            it.copy(mode = nextMode, status = TimerStatus.INITIAL, timeMillis = 0L, initialTimeMillis = 0L)
+            it.copy(
+                mode = nextMode, 
+                status = TimerStatus.INITIAL, 
+                timeMillis = 0L, 
+                initialTimeMillis = 0L,
+                laps = emptyList()
+            )
         }
     }
 
@@ -252,15 +268,33 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 // Break if timer finished
-                if (_state.value.mode == TimerMode.TIMER && _state.value.timeMillis <= 0) break
+                if ((_state.value.mode == TimerMode.TIMER) && _state.value.timeMillis <= 0) break
             }
         }
+    }
+
+    fun setAlarmSound(sound: AlarmSound) {
+        _state.update { it.copy(selectedAlarmSound = sound) }
+    }
+
+    fun toggleDarkMode(isDark: Boolean?) {
+        _state.update { it.copy(isDarkMode = isDark) }
+    }
+
+    fun setLanguage(language: AppLanguage) {
+        _state.update { it.copy(language = language) }
     }
 
     private fun playAlarm() {
         try {
             mediaPlayer?.release()
-            mediaPlayer = MediaPlayer.create(getApplication(), R.raw.after)
+            val soundResId = when (_state.value.selectedAlarmSound) {
+                AlarmSound.CLASSIC -> R.raw.after // Assuming this exists
+                AlarmSound.RADAR -> R.raw.after // Placeholder for other sounds
+                AlarmSound.BEEP -> R.raw.after
+                AlarmSound.GENTLE -> R.raw.after
+            }
+            mediaPlayer = MediaPlayer.create(getApplication(), soundResId)
             mediaPlayer?.start()
             mediaPlayer?.setOnCompletionListener {
                 it.release()
@@ -310,6 +344,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         stopTimer()
+        worldTimeJob?.cancel()
+        worldTimeJob = null
         mediaPlayer?.release()
         mediaPlayer = null
     }
