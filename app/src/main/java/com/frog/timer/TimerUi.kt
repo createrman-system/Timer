@@ -16,6 +16,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.IconButton
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -23,7 +35,6 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
@@ -85,10 +96,14 @@ fun TimerMainScreen(viewModel: TimerViewModel) {
         onStart = viewModel::startTimer,
         onPause = viewModel::pauseTimer,
         onReset = viewModel::resetTimer,
-        onSetTime = viewModel::setTimer
+        onSetTime = viewModel::setTimer,
+        onAddLap = viewModel::addLap,
+        onToggleCity = viewModel::toggleCity,
+        availableCities = viewModel.getAvailableCityNames()
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TimerContent(
     state: TimerState,
@@ -96,53 +111,87 @@ fun TimerContent(
     onStart: () -> Unit,
     onPause: () -> Unit,
     onReset: () -> Unit,
-    onSetTime: (Long) -> Unit
+    onSetTime: (Long) -> Unit,
+    onAddLap: () -> Unit,
+    onToggleCity: (String) -> Unit,
+    availableCities: List<String>
 ) {
-    var showCustomDialog by remember { mutableStateOf(false) }
+    var showCustomDialog by remember { mutableStateOf(value = false) }
+    var showCityDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
-            TabRow(selectedTabIndex = if (state.mode == TimerMode.TIMER) 0 else 1) {
-                Tab(
-                    selected = state.mode == TimerMode.TIMER,
-                    onClick = { if (state.mode != TimerMode.TIMER) onToggleMode() },
-                    text = { Text("Timer") }
+            Column {
+                TopAppBar(
+                    title = { Text("Timer") },
+                    actions = {
+                        if (state.mode == TimerMode.WORLD_TIME) {
+                            IconButton(onClick = { showCityDialog = true }) {
+                                Icon(Icons.Rounded.Add, contentDescription = "Add City")
+                            }
+                        }
+                    }
                 )
-                Tab(
-                    selected = state.mode == TimerMode.STOPWATCH,
-                    onClick = { if (state.mode != TimerMode.STOPWATCH) onToggleMode() },
-                    text = { Text("Secundemeter") }
-                )
+                TabRow(selectedTabIndex = when (state.mode) {
+                    TimerMode.TIMER -> 0
+                    TimerMode.STOPWATCH -> 1
+                    TimerMode.WORLD_TIME -> 2
+                }) {
+                    Tab(
+                        selected = state.mode == TimerMode.TIMER,
+                        onClick = { if (state.mode != TimerMode.TIMER) onToggleMode() },
+                        text = { Text("Timer") }
+                    )
+                    Tab(
+                        selected = state.mode == TimerMode.STOPWATCH,
+                        onClick = { if (state.mode != TimerMode.STOPWATCH) onToggleMode() },
+                        text = { Text("Stopwatch") }
+                    )
+                    Tab(
+                        selected = state.mode == TimerMode.WORLD_TIME,
+                        onClick = { if (state.mode != TimerMode.WORLD_TIME) onToggleMode() },
+                        text = { Text("World Time") }
+                    )
+                }
             }
         }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Top
-        ) {
-            Spacer(modifier = Modifier.height(80.dp)) // Move timer down to avoid camera cutout
+        if (state.mode == TimerMode.WORLD_TIME) {
+            WorldTimeScreen(state.worldTimes, innerPadding)
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Top
+            ) {
+                Spacer(modifier = Modifier.height(32.dp))
 
-            TimerDisplay(
-                timeMillis = state.timeMillis,
-                progress = state.progress,
-                isStopwatch = state.mode == TimerMode.STOPWATCH
-            )
+                TimerDisplay(
+                    timeMillis = state.timeMillis,
+                    progress = state.progress,
+                    isStopwatch = state.mode == TimerMode.STOPWATCH
+                )
 
-            Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(32.dp))
 
-            TimerControls(
-                status = state.status,
-                mode = state.mode,
-                onStart = onStart,
-                onPause = onPause,
-                onReset = onReset,
-                onSetTime = onSetTime,
-                onCustomClick = { showCustomDialog = true }
-            )
+                TimerControls(
+                    status = state.status,
+                    mode = state.mode,
+                    onStart = onStart,
+                    onPause = onPause,
+                    onReset = onReset,
+                    onSetTime = onSetTime,
+                    onAddLap = onAddLap,
+                    onCustomClick = { showCustomDialog = true },
+                )
+
+                if (state.mode == TimerMode.STOPWATCH && state.laps.isNotEmpty()) {
+                    LapsList(state.laps)
+                }
+            }
         }
     }
 
@@ -150,10 +199,43 @@ fun TimerContent(
         CustomTimeDialog(
             onDismiss = { showCustomDialog = false },
             onConfirm = { minutes, seconds ->
-                onSetTime((minutes * 60 + seconds) * 1000L)
+                onSetTime(((minutes * 60L) + seconds) * 1000L)
                 showCustomDialog = false
-            }
+            },
         )
+    }
+
+    if (showCityDialog) {
+        CitySelectionDialog(
+            availableCities = availableCities,
+            activeCities = state.worldTimes.map { it.cityName }.toSet(),
+            onDismiss = { showCityDialog = false },
+            onToggleCity = onToggleCity
+        )
+    }
+}
+
+@Composable
+fun WorldTimeScreen(worldTimes: List<WorldTime>, paddingValues: androidx.compose.foundation.layout.PaddingValues) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(paddingValues)
+    ) {
+        items(worldTimes) { worldTime ->
+            ListItem(
+                headlineContent = { Text(worldTime.cityName, fontWeight = FontWeight.Bold) },
+                supportingContent = { Text(worldTime.zoneId) },
+                trailingContent = {
+                    Text(
+                        worldTime.time,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            )
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+        }
     }
 }
 
@@ -217,6 +299,70 @@ fun TimerDisplay(timeMillis: Long, progress: Float, isStopwatch: Boolean) {
 }
 
 @Composable
+fun LapsList(laps: List<Long>) {
+    Column(modifier = Modifier.padding(16.dp)) {
+        Text("Laps", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        laps.forEachIndexed { index, lapTime ->
+            ListItem(
+                headlineContent = { Text("Lap ${laps.size - index}") },
+                trailingContent = { Text(formatTime(lapTime) + formatMillis(lapTime)) }
+            )
+            if (index < laps.size - 1) HorizontalDivider()
+        }
+    }
+}
+
+@Composable
+fun CitySelectionDialog(
+    availableCities: List<String>,
+    activeCities: Set<String>,
+    onDismiss: () -> Unit,
+    onToggleCity: (String) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { 
+            Column {
+                Text("Select Cities")
+                Text(
+                    "Select up to 5 favorites", 
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (activeCities.size >= 5) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        text = {
+            LazyColumn {
+                items(availableCities) { city ->
+                    val isChecked = city in activeCities
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Checkbox(
+                            checked = isChecked,
+                            onCheckedChange = { onToggleCity(city) },
+                            enabled = isChecked || activeCities.size < 5
+                        )
+                        Text(
+                            city, 
+                            modifier = Modifier.padding(start = 8.dp),
+                            color = if (!isChecked && activeCities.size >= 5) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        }
+    )
+}
+
+@Composable
 fun TimerControls(
     status: TimerStatus,
     mode: TimerMode,
@@ -224,6 +370,7 @@ fun TimerControls(
     onPause: () -> Unit,
     onReset: () -> Unit,
     onSetTime: (Long) -> Unit,
+    onAddLap: () -> Unit,
     onCustomClick: () -> Unit
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -261,6 +408,14 @@ fun TimerControls(
                     modifier = Modifier.padding(8.dp)
                 ) {
                     Icon(Icons.Rounded.Edit, contentDescription = "Custom")
+                }
+            } else if (mode == TimerMode.STOPWATCH) {
+                OutlinedButton(
+                    onClick = onAddLap,
+                    enabled = status == TimerStatus.RUNNING,
+                    modifier = Modifier.padding(8.dp)
+                ) {
+                    Icon(Icons.Rounded.Flag, contentDescription = "Lap")
                 }
             }
         }
@@ -313,11 +468,13 @@ fun CustomTimeDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                val min = minutes.toIntOrNull() ?: 0
-                val sec = seconds.toIntOrNull() ?: 0
-                onConfirm(min, sec)
-            }) {
+            TextButton(
+                onClick = {
+                    val min = minutes.toIntOrNull() ?: 0
+                    val sec = seconds.toIntOrNull() ?: 0
+                    onConfirm(min, sec)
+                },
+            ) {
                 Text("OK")
             }
         },
@@ -351,7 +508,10 @@ fun TimerPreview() {
             onStart = {},
             onPause = {},
             onReset = {},
-            onSetTime = {}
+            onSetTime = {},
+            onAddLap = {},
+            onToggleCity = {},
+            availableCities = listOf("London", "New York")
         )
     }
 }

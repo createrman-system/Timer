@@ -1,5 +1,8 @@
 package com.frog.timer
 
+import android.app.Application
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -12,11 +15,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
 
 /**
  * Unit tests for [TimerViewModel].
  */
 @OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(AndroidJUnit4::class)
 class TimerViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
@@ -25,7 +30,8 @@ class TimerViewModelTest {
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
-        viewModel = TimerViewModel()
+        val application = ApplicationProvider.getApplicationContext<Application>()
+        viewModel = TimerViewModel(application)
     }
 
     @After
@@ -34,10 +40,14 @@ class TimerViewModelTest {
     }
 
     @Test
-    fun `setTimer updates state correctly`() {
-        viewModel.setTimer(5000L)
-        assertEquals(5000L, viewModel.state.value.timeMillis)
-        assertEquals(TimerStatus.INITIAL, viewModel.state.value.status)
+    fun `toggleMode cycles through TIMER, STOPWATCH, and WORLD_TIME`() {
+        assertEquals(TimerMode.TIMER, viewModel.state.value.mode)
+        viewModel.toggleMode()
+        assertEquals(TimerMode.STOPWATCH, viewModel.state.value.mode)
+        viewModel.toggleMode()
+        assertEquals(TimerMode.WORLD_TIME, viewModel.state.value.mode)
+        viewModel.toggleMode()
+        assertEquals(TimerMode.TIMER, viewModel.state.value.mode)
     }
 
     @Test
@@ -48,7 +58,14 @@ class TimerViewModelTest {
     }
 
     @Test
-    fun `timer countdown updates timeMillis`() = runTest {
+    fun `setTimer updates state correctly`() {
+        viewModel.setTimer(5000L)
+        assertEquals(5000L, viewModel.state.value.timeMillis)
+        assertEquals(TimerStatus.INITIAL, viewModel.state.value.status)
+    }
+
+    @Test
+    fun `timer countdown updates timeMillis correctly with real time delta`() = runTest {
         viewModel.setTimer(1000L)
         viewModel.startTimer()
         
