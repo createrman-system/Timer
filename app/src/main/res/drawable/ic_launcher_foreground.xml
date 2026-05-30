@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Frog Eyes -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,42 a8,8 0 0,1 16,0 a8,8 0 0,1 -16,0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M56,42 a8,8 0 0,1 16,0 a8,8 0 0,1 -16,0" />
+    <!-- Pupils -->
+    <path
+        android:fillColor="#1B5E20"
+        android:pathData="M41,42 a3,3 0 0,1 6,0 a3,3 0 0,1 -6,0" />
+    <path
+        android:fillColor="#1B5E20"
+        android:pathData="M61,42 a3,3 0 0,1 6,0 a3,3 0 0,1 -6,0" />
+    <!-- Timer Body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M32,62 a22,22 0 0,1 44,0 a22,22 0 0,1 -44,0" />
+    <!-- Timer Dial -->
+    <path
+        android:fillColor="#1B5E20"
+        android:pathData="M36,62 a18,18 0 0,1 36,0 a18,18 0 0,1 -36,0" />
+    <!-- Timer Needle -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M54,62 L54,48" />
+    <!-- Frog Smile -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M48,72 Q54,76 60,72" />
+</vector>
